@@ -22,6 +22,14 @@ server.get('/participants', async (req,res)=>{
     }
 })
 
+server.get('/messages', async (req,res)=>{
+    try{
+        const messages = await db.collection('messages').find().toArray();
+        res.send(messages);
+    }catch{
+        res.status(500).send("Server error");
+    }
+})
 
 
 
