@@ -75,9 +75,26 @@ server.post('/participants', async (req, res) => {
 })
 
 server.get('/messages', async (req, res) => {
+    const { limit } = req.query;
+    const { user } = req.headers;
     try {
         const messages = await db.collection('messages').find().toArray();
-        res.send(messages);
+        const limitMessages = [];
+        let counter = 0;
+        for(let i=messages.length-1;i>=0;i--){
+            const condition = (messages[i].type === 'message' 
+                            || messages[i].from === user 
+                            || messages[i].to === user)
+            if(condition){
+                limitMessages.push(messages[i]);
+                counter++;
+            }
+            if(counter===Number(limit)){
+                counter=0;
+                break;
+            }
+        }
+        res.send(limitMessages);
     } catch {
         res.status(500).send("Server error");
     }
