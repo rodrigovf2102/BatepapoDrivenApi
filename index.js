@@ -11,36 +11,43 @@ server.use(cors());
 server.use(express.json());
 dotenv.config();
 
-const mongoClient  = new MongoClient(process.env.MONGO_URI);
+const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
 
-mongoClient.connect().then(()=> {db = mongoClient.db('uol-backend');});
+mongoClient.connect().then(() => { db = mongoClient.db('uol-backend'); });
 
 const userSchema = joi.object({
     name: joi.string().required()
 })
+const messageSchema = joi.object({
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().required().valid('message', 'private_message'),
+    from: joi.string().required(),
+    time: joi.string().required()
+})
 
-server.get('/participants', async (req,res)=>{
-    try{
+server.get('/participants', async (req, res) => {
+    try {
         const users = await db.collection('users').find().toArray();
         res.send(users);
-    }catch{
+    } catch {
         res.status(500).send("Server error");
     }
 })
 
-server.post('/participants', async (req,res)=>{
+server.post('/participants', async (req, res) => {
     const { name } = req.body;
     const user = {};
     user.name = name;
     const validation = userSchema.validate(user);
-    if(validation.error){
+    if (validation.error) {
         res.status(422).send(validation.error.details[0].message);
         return;
     }
     try {
         const users = await db.collection('users').find().toArray();
-        if(users.find(participant => participant.name === user.name)){
+        if (users.find(participant => participant.name === user.name)) {
             res.status(409).send("User unavailable");
             return;
         }
@@ -53,26 +60,73 @@ server.post('/participants', async (req,res)=>{
         from: user.name,
         to: 'Todos',
         text: 'entra na sala...',
-        type: user.lastStatus,
+        type: 'status',
         time: dayjs(Date.now()).format('HH:mm:ss')
     }
-    try{
+    try {
         await db.collection('users').insertOne(user);
         await db.collection('messages').insertOne(message);
         res.sendStatus(201);
         return;
-    } catch(error){
+    } catch (error) {
         res.status(500).send("User or entry message cannot be saved, server error");
         return;
-    } 
+    }
 })
 
-server.get('/messages', async (req,res)=>{
-    try{
+server.get('/messages', async (req, res) => {
+    try {
         const messages = await db.collection('messages').find().toArray();
         res.send(messages);
-    }catch{
+    } catch {
         res.status(500).send("Server error");
+    }
+})
+
+server.post('/messages', async (req, res) => {
+    const { to, text, type } = req.body;
+    const { user } = req.headers;
+    const message = {
+        to: to,
+        text: text,
+        type: type,
+        from: user,
+        time: dayjs().format('HH:mm:ss')
+    };
+    const validation = messageSchema.validate(message,{abortEarly:false});
+    if (validation.error) {
+        const errors = validation.error.details.map(detail => detail.message);
+        res.status(422).send(errors);
+        return;
+    }
+    try {
+        const validation = await db.collection('users').findOne({ name: user });
+        if (!validation) {
+            res.status(409).send("Error: user not found");
+            return;
+        }
+    } catch (error) {
+        res.status(500).send("Error: Unable to search for user on database");
+        return;
+    }
+    try {
+        if (to !== 'Todos') {
+            const validation = await db.collection('users').findOne({ name: to });
+            if (!validation) {
+                res.status(409).send("Error: receiver not found");
+                return;
+            }
+        }
+    } catch (error) {
+        res.status(500).send("Error: Unable to search for receiver on database")
+    }
+    try {
+        await db.collection('messages').insertOne(message);
+        res.sendStatus(201);
+        return;
+    } catch (error) {
+        res.status(500).send('Error: Unable to insert message on database');
+        return;
     }
 })
 
