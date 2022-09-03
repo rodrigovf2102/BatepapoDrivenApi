@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ReturnDocument } from 'mongodb';
 import dotenv from 'dotenv';
 import joi from 'joi';
 import dayjs from 'dayjs';
@@ -17,13 +17,13 @@ let db;
 mongoClient.connect().then(() => { db = mongoClient.db('uol-backend'); });
 
 const userSchema = joi.object({
-    name: joi.string().required()
+    name: joi.string().empty().required()
 })
 const messageSchema = joi.object({
-    to: joi.string().required(),
-    text: joi.string().required(),
+    to: joi.string().empty().required(),
+    text: joi.string().empty().required(),
     type: joi.string().required().valid('message', 'private_message'),
-    from: joi.string().required(),
+    from: joi.string().empty().required(),
     time: joi.string().required()
 })
 
@@ -143,6 +143,23 @@ server.post('/messages', async (req, res) => {
         return;
     } catch (error) {
         res.status(500).send('Error: Unable to insert message on database');
+        return;
+    }
+})
+
+server.post('/status', async (req,res)=>{
+    const { user } = req.headers;
+    try {
+        const participant = await db.collection('users').findOne({name: user});
+        if(!participant){
+            res.status(404).send('Error: user not found');
+            return;
+        }
+        await db.collection('users').updateOne({_id: participant._id},{$set:{lastStatus:Date.now()}})
+        res.sendStatus(200);
+        return;
+    } catch (error) {
+        res.status(500).send('Error: unable to update user on database');
         return;
     }
 })
