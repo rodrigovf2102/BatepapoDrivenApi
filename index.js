@@ -81,16 +81,17 @@ server.get('/messages', async (req, res) => {
         const messages = await db.collection('messages').find().toArray();
         const limitMessages = [];
         let counter = 0;
-        for(let i=messages.length-1;i>=0;i--){
-            const condition = (messages[i].type === 'message' 
-                            || messages[i].from === user 
-                            || messages[i].to === user)
-            if(condition){
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const condition = (messages[i].type === 'message'
+                || messages[i].from === user
+                || messages[i].to === user
+                || messages[i].type === 'status')
+            if (condition) {
                 limitMessages.push(messages[i]);
                 counter++;
             }
-            if(counter===Number(limit)){
-                counter=0;
+            if (counter === Number(limit)) {
+                counter = 0;
                 break;
             }
         }
@@ -110,7 +111,7 @@ server.post('/messages', async (req, res) => {
         from: user,
         time: dayjs().format('HH:mm:ss')
     };
-    const validation = messageSchema.validate(message,{abortEarly:false});
+    const validation = messageSchema.validate(message, { abortEarly: false });
     if (validation.error) {
         const errors = validation.error.details.map(detail => detail.message);
         res.status(422).send(errors);
@@ -147,15 +148,15 @@ server.post('/messages', async (req, res) => {
     }
 })
 
-server.post('/status', async (req,res)=>{
+server.post('/status', async (req, res) => {
     const { user } = req.headers;
     try {
-        const participant = await db.collection('users').findOne({name: user});
-        if(!participant){
+        const participant = await db.collection('users').findOne({ name: user });
+        if (!participant) {
             res.status(404).send('Error: user not found');
             return;
         }
-        await db.collection('users').updateOne({_id: participant._id},{$set:{lastStatus:Date.now()}})
+        await db.collection('users').updateOne({ _id: participant._id }, { $set: { lastStatus: Date.now() } })
         res.sendStatus(200);
         return;
     } catch (error) {
@@ -163,5 +164,33 @@ server.post('/status', async (req,res)=>{
         return;
     }
 })
+
+
+setInterval(async () => {
+    try {
+        let users = await db.collection('users').find().toArray();
+        if(users.length === 0){
+            return;
+        }
+        users = users.filter(user =>  Math.abs(user.lastStatus - Date.now()) > 10000 );
+        if(users.length === 0){
+            return;
+        }       
+        users.map(async (user) => {
+            const lastMessage = {
+                from: user.name,
+                to: 'Todos',
+                text: 'sai da sala...',
+                type: 'status',
+                time: dayjs().format('HH:mm:ss')
+            }
+            await db.collection('messages').insertOne(lastMessage);
+        })
+        users.map(async (user) => await db.collection('users').deleteOne(user) );
+    } catch (error) {
+        console.log(error);
+    }
+}, 15000)
+
 
 server.listen(5000);
