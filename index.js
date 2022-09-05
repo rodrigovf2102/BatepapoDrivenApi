@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import { MongoClient, ReturnDocument } from 'mongodb';
+import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import joi from 'joi';
 import dayjs from 'dayjs';
+import { strict as assert } from "assert";
+import { stripHtml } from "string-strip-html";
 
 dayjs.locale('pt-br');
 const server = express();
@@ -37,8 +39,9 @@ server.get('/participants', async (req, res) => {
 })
 
 server.post('/participants', async (req, res) => {
-    const { name } = req.body;
+    let { name } = req.body;
     const user = {};
+    name = stripHtml(name,{skipHtmlDecoding:true}).result.trim();
     user.name = name;
     const validation = userSchema.validate(user);
     if (validation.error) {
@@ -77,6 +80,7 @@ server.post('/participants', async (req, res) => {
 server.get('/messages', async (req, res) => {
     const { limit } = req.query;
     const { user } = req.headers;
+
     try {
         const messages = await db.collection('messages').find().toArray();
         const limitMessages = [];
@@ -102,8 +106,12 @@ server.get('/messages', async (req, res) => {
 })
 
 server.post('/messages', async (req, res) => {
-    const { to, text, type } = req.body;
-    const { user } = req.headers;
+    let { to, text, type } = req.body;
+    let { user } = req.headers;
+    to= stripHtml(to,{skipHtmlDecoding:true}).result.trim();
+    text= stripHtml(text,{skipHtmlDecoding:true}).result.trim();
+    type= stripHtml(type,{skipHtmlDecoding:true}).result.trim();
+    user= stripHtml(user,{skipHtmlDecoding:true}).result.trim();
     const message = {
         to: to,
         text: text,
