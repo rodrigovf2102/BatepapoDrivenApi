@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
 import joi from 'joi';
 import dayjs from 'dayjs';
@@ -171,6 +171,25 @@ server.post('/status', async (req, res) => {
         res.status(500).send('Error: unable to update user on database');
         return;
     }
+})
+
+server.delete('/messages/:ID_DA_MENSAGEM', async(req,res)=>{
+    const { user } = req.headers;
+    const { ID_DA_MENSAGEM } = req.params;
+    
+    const message = await db.collection('messages').findOne({_id: ObjectId(ID_DA_MENSAGEM)});
+
+    if(!message){
+        res.status(404).send('Error: message not found');
+        return;
+    }
+    
+    if(message.from !== user){
+        res.status(401).send('Error: user is not the message creator');
+        return;
+    }
+    await db.collection('messages').deleteOne({_id: ObjectId(ID_DA_MENSAGEM)});
+    res.status(201).send('Message deleted');
 })
 
 
