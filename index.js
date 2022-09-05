@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { MongoClient, ObjectId } from 'mongodb';
+import { MongoClient, ObjectId, ReturnDocument } from 'mongodb';
 import dotenv from 'dotenv';
 import joi from 'joi';
 import dayjs from 'dayjs';
@@ -27,6 +27,11 @@ const messageSchema = joi.object({
     type: joi.string().required().valid('message', 'private_message'),
     from: joi.string().empty().required(),
     time: joi.string().required()
+})
+const updateMessageSchema = joi.object({
+    to: joi.string().empty().required(),
+    text: joi.string().empty().required(),
+    type: joi.string().required().valid('message', 'private_message')
 })
 
 server.get('/participants', async (req, res) => {
@@ -164,7 +169,8 @@ server.post('/status', async (req, res) => {
             res.status(404).send('Error: user not found');
             return;
         }
-        await db.collection('users').updateOne({ _id: participant._id }, { $set: { lastStatus: Date.now() } })
+        await db.collection('users')
+        .updateOne({ _id: participant._id }, { $set: { lastStatus: Date.now() } })
         res.sendStatus(200);
         return;
     } catch (error) {
@@ -176,20 +182,78 @@ server.post('/status', async (req, res) => {
 server.delete('/messages/:ID_DA_MENSAGEM', async(req,res)=>{
     const { user } = req.headers;
     const { ID_DA_MENSAGEM } = req.params;
-    
-    const message = await db.collection('messages').findOne({_id: ObjectId(ID_DA_MENSAGEM)});
+    try {
+        const message = await db.collection('messages')
+        .findOne({_id: ObjectId(ID_DA_MENSAGEM)});
+        if(!message){
+            res.status(404).send('Error: message not found');
+            return;
+        }
+        
+        if(message.from !== user){
+            res.status(401).send('Error: user is not the message creator');
+            return;
+        }
+        await db.collection('messages').deleteOne({_id: ObjectId(ID_DA_MENSAGEM)});
+        res.status(201).send('Message deleted');
+    } catch (error) {
+        res.status(500).send('Error: unable to search or delete message from database');
+    }
 
-    if(!message){
-        res.status(404).send('Error: message not found');
-        return;
-    }
+})
+
+server.put('/messages/:ID_DA_MENSAGEM',async(req,res)=>{
+    let {to,text,type} = req.body;
+    const {user} = req.headers;
+    const {ID_DA_MENSAGEM} = req.params;
     
-    if(message.from !== user){
-        res.status(401).send('Error: user is not the message creator');
+    to= stripHtml(to,{skipHtmlDecoding:true}).result.trim();
+    text= stripHtml(text,{skipHtmlDecoding:true}).result.trim();
+    type= stripHtml(type,{skipHtmlDecoding:true}).result.trim();
+    const message = {
+        to: to,
+        text: text,
+        type: type,
+    };
+
+    const validation = updateMessageSchema.validate(message, { abortEarly: false });
+    if (validation.error) {
+        const errors = validation.error.details.map(detail => detail.message);
+        res.status(422).send(errors);
         return;
     }
-    await db.collection('messages').deleteOne({_id: ObjectId(ID_DA_MENSAGEM)});
-    res.status(201).send('Message deleted');
+    try {
+        const from = await db.collection('users').findOne({name:user});
+        if(!from){
+            res.status(422).send('Error: user not found');
+            return;
+        }
+        if(to!=='Todos'){
+            const para = await db.collection('users').findOne({name:to});
+            if(!para){
+                res.status(422).send('Error: receiver not found');
+                return;
+            }
+        }
+        message.from=user;
+        const dbMessage = await db.collection('messages')
+        .findOne({_id:ObjectId(ID_DA_MENSAGEM)});
+        if(!dbMessage){
+            res.status(404).send('Error: message not found');
+            return;
+        }
+        if(dbMessage.from !== user){
+            res.status(401).send('Error: user is not the message creator');
+            return;
+        }
+        await db.collection('messages').updateOne({_id:ObjectId(ID_DA_MENSAGEM)},
+        {$set:{to:to,text:text,type:type}});
+        res.sendStatus(200);
+        return;
+    } catch (error) {
+        res.status(500).send('Error: unable to update message on database');
+        return;
+    }
 })
 
 
